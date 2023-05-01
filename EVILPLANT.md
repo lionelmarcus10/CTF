@@ -77,7 +77,7 @@ on a alors comme résultat :
 on comprend alors que ce qui nous interesse c'est le premier noeud de la racine et ses enfants car ceux-ci contiennent les vanves et les contenants ainsi que le mix.
 ## Etape 3 - Observer les activités des vanves et collecter le dosage
 
-Après m'etre documenté sur opcua en pyton, j'ai découvert qu'il existe des variable et qu'on peut peut utiliser une fonction et souscrire à un système d'alert pour connaçitre les changements qu'il y'a eu 
+Après m'être documenté sur opcua en pyton, j'ai découvert qu'il existe des variable et qu'on peut utiliser une fonction et souscrire à un système d'alertes pour connaitre les changements qu'il y'a eu 
 
 j'ai donc modifié mon script 
 
@@ -149,3 +149,94 @@ j'ai juste à prendre la liste de 0 à 2505 regrouper 2 à 2 les éléments puis
 ![App screenshot](https://cdn.discordapp.com/attachments/952706654464512030/1102318454821888180/image.png)
 
 ![App screenshot ](https://cdn.discordapp.com/attachments/952706654464512030/1102317958774145104/image.png)
+
+
+## Script final
+```
+from opcua import Client, ua
+
+def convert_to_hex_reversed(element):
+    valeur1 = hex(element[0])[2:].zfill(2)
+    element1 = hex(element[1])[2:].zfill(2)
+    valeur2 = hex(element[2])[2:].zfill(2)
+    element2 = hex(element[3])[2:].zfill(2)
+    print(element1, valeur1, element2, valeur2)
+    
+    
+    if ( "0x"+str(element1) > "0x"+str(element2)):
+        return  element2 + element1 + valeur2 + valeur1
+    else:
+        return element1 + element2 + valeur1 + valeur2
+
+
+
+
+lis = []
+class DataChangeHandler(object):
+    def __init__(self):
+        self.last_values = {}
+        self.flag = [] 
+
+    def datachange_notification(self, node, val, data):
+        print("Changement de données détecté pour le nœud :", node)
+        very_old = 0
+        if node in self.last_values:
+            old_val = self.last_values[node]
+            print("Ancienne valeur :", old_val)
+            very_old = old_val
+        else:
+            old_val = None
+        print("Nouvelle valeur :", val)
+        self.last_values[node] = val
+        if str(node).split(";i")[1][1:].isnumeric() == True  and str(node) != "ns=1;i=6050":
+            if( very_old - val >  0 and very_old - val < 10000 and 6011 <= int(str(node).split(";i")[1][1:]) <= 6026 ): 
+                lis.append([very_old - val, str(node).split(";i")[1][1:]])
+        if node in self.last_values:
+            print( "réduction =",  very_old - val  )
+        if( len(lis) == 8):
+            self.flag = lis
+
+url = "opc.tcp://evil-plant.france-cybersecurity-challenge.fr:4841"
+client = Client(url)
+client.connect()
+# Créez des souscriptions pour surveiller les changements de valeurs des vannes et de la cuve MIX
+sub = client.create_subscription(500, DataChangeHandler())
+
+interval = [i for i in range(11, 27) ] + [ j for j in range(31, 47)] 
+valve_nodes = [client.get_node(f"ns=1;i=60{i}") for i in interval ]
+mix_node = client.get_node("ns=1;i=6050")
+
+mix_element = client.get_node("ns=1;i=6051")
+
+handles = [sub.subscribe_data_change(node) for node in valve_nodes + [mix_node] + [mix_element] ]
+
+# Attendez que les changements de valeurs soient détectés et enregistrés
+input("Appuyez sur Entrée pour arrêter la surveillance...")
+
+# Supprimez les souscriptions
+for handle in handles:
+    sub.unsubscribe(handle)
+
+client.disconnect()
+print(lis)
+
+# implémmentation des changements pur et dur (copié collé de la liste obtenue ( variable lis ) en partant ([1,6011] car c'est à partir de ce chngement que le mix commence à se remplir  )
+x =  [[1, '6011'], [193, '6013'], [56, '6017'], [29, '6021'], [201, '6012'], [238, '6023'], [141, '6016'], [199, '6025'], [200, '6018'], [231, '6022'], [145, '6014'], [139, '6026'],  [183, '6019'], [176, '6020'], [230, '6015'], [143, '6024'] ]
+
+print(x)
+x = [ [i[0] , int(i[1])-6010 ] for i in x ]
+
+final_list =  []
+for j in range(0,16,2):
+    k = x[j] + x[j+1]
+    final_list.append(k)
+print("\n",final_list)
+# convertir un nombre en hexadécimal avec minimum 2 caractères
+flag = "FCSC{"
+for i in final_list:
+    flag += convert_to_hex_reversed(i)
+flag += "}"
+
+print(flag)
+exit()
+```
